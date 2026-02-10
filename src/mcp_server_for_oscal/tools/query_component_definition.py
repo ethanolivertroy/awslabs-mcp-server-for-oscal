@@ -37,7 +37,7 @@ _stats: dict[str, int] = {
 
 def _load_external_component_definition(source: str, ctx: Context) -> None:
     """
-    Load and validate an OSCAL Component Definitions from a URI. The URI can be local or remote and may refer to a zip file that contains Component Definitions. 
+    Load and validate an OSCAL Component Definitions from a URI. The URI can be local or remote and may refer to a zip file that contains Component Definitions.
 
     Only works when `config.allow_remote_uris` is to True. Fetches the JSON
     content via HTTP and validates it using trestle's ComponentDefinition.parse_obj method.
@@ -126,7 +126,7 @@ def _load_component_definitions_from_directory(directory_path: Path | None = Non
     Recursively scan a directory for Component Definition files and load them.
 
     This function is called when this module is initialized. No need to call
-    directly unless you want to load new files after initialization. 
+    directly unless you want to load new files after initialization.
 
     Searches for all .json and .zip files in the directory and subdirectories. For each file:
     - JSON files: Attempts to load as OSCAL Component Definitions using trestle's oscal_read
@@ -136,15 +136,15 @@ def _load_component_definitions_from_directory(directory_path: Path | None = Non
     indexed in _cdefs_by_uuid and _cdefs_by_title for efficient querying.
 
     Args:
-        directory_path: Path to the directory to scan for Component Definition files. 
+        directory_path: Path to the directory to scan for Component Definition files.
                        Defaults to `config.component_definitions_dir` if None. If you pass a value
-                       for directory_path, all existing Component Definitions and Components will be 
+                       for directory_path, all existing Component Definitions and Components will be
                        cleared from memory before the directory is processed.
 
     Returns:
-        dict[str, ComponentDefinition]: Dictionary mapping file paths (as strings) to 
-                                       ComponentDefinition instances. This is stored in 
-                                       the global _cdefs_by_path variable. Only successfully 
+        dict[str, ComponentDefinition]: Dictionary mapping file paths (as strings) to
+                                       ComponentDefinition instances. This is stored in
+                                       the global _cdefs_by_path variable. Only successfully
                                        loaded and validated Component Definitions are included.
 
     Note:
@@ -155,7 +155,6 @@ def _load_component_definitions_from_directory(directory_path: Path | None = Non
           the OSCAL wrapper format ({"component-definition": {...}})
         - Updates global _stats dictionary with loading statistics
     """
-    global _stats
 
     if directory_path is None:
         # Load all Component Definitions from the configured directory
@@ -167,6 +166,9 @@ def _load_component_definitions_from_directory(directory_path: Path | None = Non
         _components_by_title.clear()
         _components_by_uuid.clear()
         _components_to_cdef_by_uuid.clear()
+        # reset all stats to 0
+        _stats.update({key: 0 for key in _stats})
+
 
     component_definitions: dict[str, ComponentDefinition] = {}
 
@@ -186,7 +188,6 @@ def _load_component_definitions_from_directory(directory_path: Path | None = Non
     return _cdefs_by_path
 
 def _process_zip_files(directory_path: Path) -> None:
-    global _stats
 
     logger.info("Scanning directory for Component Definitions: %s", directory_path)
 
@@ -220,7 +221,6 @@ def _handle_zip_file(zf: Path) -> None:
 
 def _process_json_files(directory_path: Path) -> None:
 
-    global _stats
     # Recursively find all .json files
     json_files = list(directory_path.rglob("**/*.json"))
     logger.debug("Found %d JSON files to process", len(json_files))
@@ -237,7 +237,7 @@ def _process_json_files(directory_path: Path) -> None:
             # Use trestle's oscal_read to properly load and validate OSCAL files
             # This method automatically handles the OSCAL wrapper format
             component_def = cast(ComponentDefinition, ComponentDefinition.oscal_read(json_file))
-            _stats["processed_json_files"]
+            _stats["processed_json_files"] += 1
             if component_def is None:
                 logger.debug("Skipping file (oscal_read returned None): %s", json_file)
                 continue
@@ -269,13 +269,6 @@ def _index_components(cdef: ComponentDefinition, path: str) -> None:
         - Updates global _stats dictionary with indexing counts
         - Called automatically by _load_component_definitions_from_directory
     """
-    global _cdefs_by_path
-    global _cdefs_by_title
-    global _cdefs_by_uuid
-    global _components_by_uuid
-    global _components_by_title
-    global _components_to_cdef_by_uuid
-    global _stats
 
     try:
         # Store with relative path as key
@@ -361,7 +354,7 @@ def query_component_definition(
 
     Args:
         ctx: MCP server context (injected automatically by MCP server)
-        component_definition_filter: Optional UUID or metadata.title from Component Definition 
+        component_definition_filter: Optional UUID or metadata.title from Component Definition
             to limit the search to a specific Component Definition. If not provided, searches
             across all loaded Component Definitions.
         query_type: Type of query to perform:
@@ -402,13 +395,6 @@ def query_component_definition(
         msg = f"query_value is required when query_type is '{query_type}'"
         try_notify_client_error(msg, ctx)
         raise ValueError(msg)
-
-    global _cdefs_by_path
-    global _cdefs_by_uuid
-    global _cdefs_by_title
-    global _components_by_uuid
-    global _components_by_title
-
 
     if not _cdefs_by_path:
         msg = "No Component Definitions loaded"
@@ -523,15 +509,14 @@ def query_component_definition(
 
     # Return the query response
 
-    r = {
+    return {
         "components": formatted_components,
         "total_count": len(formatted_components),
         "query_type": query_type,
         "component_definitions_searched": len(comp_defs_searched),
         "filtered_by": component_definition_filter,
     }
-    # logger.debug(r)
-    return r
+    
 
 @tool()
 def list_component_definitions(ctx: Context) -> list[dict]:
@@ -543,7 +528,6 @@ def list_component_definitions(ctx: Context) -> list[dict]:
     Returns:
         List[dict]: List of dictionaries containing uuid, title, componentCount, and importedComponentDefinitionsCount, for each Component Definition
     """
-    global _cdefs_by_title
     if not _cdefs_by_title:
         msg = "No Component Definitions loaded"
         try_notify_client_error(msg, ctx)
@@ -576,9 +560,6 @@ def list_components(ctx: Context) -> list[dict]:
     Returns:
         List[dict]: List of dictionaries containing for each Component: uuid, title, and parent's UUID and title
     """
-    global _components_by_title
-    global _components_to_cdef_by_uuid
-
     if not _components_by_title:
         msg = "No Components loaded"
         try_notify_client_error(msg, ctx)
