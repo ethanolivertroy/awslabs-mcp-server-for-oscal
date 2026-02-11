@@ -3,6 +3,7 @@ Tool for validating OSCAL content through a multi-level validation pipeline.
 """
 
 import importlib
+import itertools
 import json
 import logging
 import shutil
@@ -102,7 +103,7 @@ def _validate_json_schema(data: dict, model_type: OSCALModelType) -> dict:
         )
 
     validator = jsonschema.Draft7Validator(schema)
-    raw_errors = list(validator.iter_errors(data))
+    raw_errors = list(itertools.islice(validator.iter_errors(data), MAX_ERRORS_PER_LEVEL + 1))
 
     if not raw_errors:
         return _make_level("json_schema")
@@ -111,7 +112,7 @@ def _validate_json_schema(data: dict, model_type: OSCALModelType) -> dict:
     warnings = []
     if len(raw_errors) > MAX_ERRORS_PER_LEVEL:
         warnings.append(
-            f"Showing {MAX_ERRORS_PER_LEVEL} of {len(raw_errors)} errors"
+            f"Showing first {MAX_ERRORS_PER_LEVEL} errors; more may exist"
         )
 
     return _make_level("json_schema", valid=False, errors=errors, warnings=warnings)
@@ -244,7 +245,8 @@ def validate_oscal_content(
     Returns:
         dict: Structured validation results with per-level detail
     """
-    logger.debug("validate_oscal_content(model_type=%s, content_length=%d)", model_type, len(content))
+    content_length = len(content) if isinstance(content, str) else None
+    logger.debug("validate_oscal_content(model_type=%s, content_length=%s)", model_type, content_length)
 
     levels: list[dict] = []
 
@@ -270,6 +272,10 @@ def validate_oscal_content(
         except ValueError:
             msg = f"Invalid model_type: '{model_type}'. Use list_oscal_models to see valid types."
             try_notify_client_error(msg, ctx)
+            for lvl in ("json_schema", "trestle", "oscal_cli"):
+                levels.append(
+                    _make_level(lvl, skipped=True, skip_reason=f"Skipped due to invalid model_type: '{model_type}'")
+                )
             return {"valid": False, "model_type": model_type, "levels": levels, "error": msg}
     elif detected is not None:
         resolved_type = detected
@@ -277,6 +283,10 @@ def validate_oscal_content(
         root_keys = [k for k in parsed if k != "$schema"]
         msg = f"Cannot detect OSCAL model type from root keys: {root_keys}"
         try_notify_client_error(msg, ctx)
+        for lvl in ("json_schema", "trestle", "oscal_cli"):
+            levels.append(
+                _make_level(lvl, skipped=True, skip_reason="Skipped due to undetectable model type")
+            )
         return {"valid": False, "model_type": None, "levels": levels, "error": msg}
 
     model_type_str = resolved_type.value

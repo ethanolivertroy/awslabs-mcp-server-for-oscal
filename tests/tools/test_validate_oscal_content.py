@@ -3,7 +3,7 @@ Tests for the validate_oscal_content tool.
 """
 
 import json
-from unittest.mock import AsyncMock, Mock, patch, MagicMock
+from unittest.mock import AsyncMock, patch, MagicMock
 
 import pytest
 
@@ -172,6 +172,7 @@ class TestValidateJsonSchema:
         assert result["valid"] is False
         assert len(result["errors"]) == MAX_ERRORS_PER_LEVEL
         assert len(result["warnings"]) >= 1
+        assert "more may exist" in result["warnings"][0]
 
     @patch("mcp_server_for_oscal.tools.validate_oscal_content.load_oscal_json_schema")
     def test_schema_load_failure(self, mock_load_schema):
@@ -330,18 +331,26 @@ class TestValidateOscalContentEndToEnd:
             assert "well-formedness" in lvl["skip_reason"]
 
     def test_invalid_model_type(self, mock_context):
-        """Invalid model_type parameter returns error."""
+        """Invalid model_type parameter returns error with 4 levels."""
         result = validate_oscal_content(
             mock_context, '{"catalog": {}}', model_type="not-a-model"
         )
         assert result["valid"] is False
         assert "error" in result
+        assert len(result["levels"]) == 4
+        for lvl in result["levels"][1:]:
+            assert lvl["skipped"] is True
+            assert "invalid model_type" in lvl["skip_reason"]
 
     def test_undetectable_model_type(self, mock_context):
-        """Unknown root key fails model type detection."""
+        """Unknown root key fails model type detection with 4 levels."""
         result = validate_oscal_content(mock_context, '{"unknown": {}}')
         assert result["valid"] is False
         assert "error" in result
+        assert len(result["levels"]) == 4
+        for lvl in result["levels"][1:]:
+            assert lvl["skipped"] is True
+            assert "undetectable model type" in lvl["skip_reason"]
 
     @patch("mcp_server_for_oscal.tools.validate_oscal_content._validate_oscal_cli")
     @patch("mcp_server_for_oscal.tools.validate_oscal_content._validate_trestle")
@@ -376,3 +385,11 @@ class TestValidateOscalContentEndToEnd:
         result = validate_oscal_content(mock_context, "")
         assert result["valid"] is False
         assert result["levels"][0]["valid"] is False
+
+    def test_none_content(self, mock_context):
+        """None content produces well-formedness failure, not a crash."""
+        result = validate_oscal_content(mock_context, None)
+        assert result["valid"] is False
+        assert result["levels"][0]["level"] == "well_formedness"
+        assert result["levels"][0]["valid"] is False
+        assert len(result["levels"]) == 4
