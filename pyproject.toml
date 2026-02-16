@@ -67,6 +67,7 @@ python = "3.12"
 
 
 [tool.hatch.envs.devtest]
+pip-compile-constraint = "default"
 dependency-groups = ["devtest"]
 
 [tool.pytest.ini_options]
