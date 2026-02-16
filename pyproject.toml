@@ -59,7 +59,8 @@ version-file = "_version.py"
 [tool.hatch.envs.default]
 type = "pip-compile"
 pip-compile-resolver = "uv"
-pip-compile-installer = "uv"
+pip-compile-installer = "pip-sync"
+pip-compile-verbose = true
 # This controls what version of Python you want to be the default
 # when running any scripts or tools to do things like debug test failures
 # or do general development. 
@@ -67,8 +68,12 @@ python = "3.12"
 
 
 [tool.hatch.envs.devtest]
-pip-compile-constraint = "default"
+# type = "pip-compile"
+# pip-compile-resolver = "uv"
+# pip-compile-installer = "pip-sync"
+# pip-compile-constraint = "default"
 dependency-groups = ["devtest"]
+# pip-compile-verbose = true
 
 [tool.pytest.ini_options]
 addopts = ["--durations=5", "--color=yes"]
@@ -128,8 +133,8 @@ requires = [
 update = [
   # Update project dependencies in this file, then compile to requirements.txt
   # to ensure deterministic/reproducible builds.
-  "uv pip install -U -r pyproject.toml",
-  # "uv pip install -U -r pyproject.toml --group devtest",
+  # "uv pip install -U -r pyproject.toml",
+  "uv pip install -U -r pyproject.toml --group devtest",
 ]
 
 rehash = [
