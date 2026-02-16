@@ -11,7 +11,7 @@ dependencies = [
   "boto3>=1.42.7",
   "mcp>=1.23.3",
   "strands-agents>=1.19.0",
-  "compliance-trestle>=3.0.0",
+  "compliance-trestle>=3.12.0",
 ]
 requires-python = ">=3.11"
 description = "AI agent tools for Open Security Controls Assessment Language (OSCAL)."
@@ -34,8 +34,12 @@ classifiers = [
   "Programming Language :: Python :: 3.12",
 ]
 
+[dependency-groups]
+devtest = ["pytest", "mypy", "boto3-stubs", "bandit", "pytest-asyncio"]
+
 [project.scripts]
 server = "mcp_server_for_oscal.main:main"
+mcp_server_for_oscal = "mcp_server_for_oscal.main:main"
 
 [project.urls]
 GitHub = "https://github.com/awslabs/mcp-server-for-oscal/"
@@ -52,11 +56,17 @@ version_scheme = "no-guess-dev"
 version-file = "_version.py"
 
 [tool.hatch.envs.default]
+type = "pip-compile"
+pip-compile-resolver = "uv"
+pip-compile-installer = "uv"
 # This controls what version of Python you want to be the default
 # when running any scripts or tools to do things like debug test failures
 # or do general development. 
 python = "3.12"
-dependencies = ["pytest", "mypy", "boto3-stubs", "bandit", "pytest-asyncio"]
+
+
+[tool.hatch.envs.devtest]
+dependency-groups = ["devtest"]
 
 [tool.pytest.ini_options]
 addopts = ["--durations=5", "--color=yes"]
@@ -107,6 +117,9 @@ directory = "./build"
 
 [tool.hatch.env]
 python = "3.12"
+requires = [
+    "hatch-pip-compile"
+]
 
 [tool.hatch.envs.default.scripts]
 # These are scripts you can run using `hatch run <script-name>`
@@ -121,9 +134,8 @@ typing = [
 update = [
   # Update project dependencies in this file, then compile to requirements.txt
   # to ensure deterministic/reproducible builds.
-  "hatch env prune",
   "uv pip install -U -r pyproject.toml",
-  "uv pip compile pyproject.toml -o requirements.txt",
+  # "uv pip install -U -r pyproject.toml --group devtest",
 ]
 
 bandito = [

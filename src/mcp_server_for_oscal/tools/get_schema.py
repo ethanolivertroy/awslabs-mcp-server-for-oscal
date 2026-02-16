@@ -26,7 +26,7 @@ def get_oscal_schema(
     """
     A tool that returns the schema for specified OSCAL model. Try this tool first for any questions about the structure of OSCAL models.
     By default we return a JSON schema, but `schema_type` parameter can change that behavior. You can use the list_models tool to get
-    a list of valid model names.
+    a list of valid model names. Request the `complete` schema only as a last resort - it's very large and may overflow your context window.
 
     Args:
         ctx: MCP server context (should be injected automatically by MCP server)
