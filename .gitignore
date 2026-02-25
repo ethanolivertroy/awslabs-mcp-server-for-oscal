@@ -31,4 +31,6 @@ _version.py
 
 # Mac OS
 .DS_Store
-.firecrawl/
+
+# Hypothesis
+.hypothesis/

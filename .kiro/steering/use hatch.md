@@ -8,7 +8,7 @@ inclusion: always
 -------------------------------------------------------------------------------------> 
 A number of scripts and commands exist in `pyproject.toml` under the `*.scripts` sections. Most include descriptive names or comments. Running a script for a specific environment is simply  running `hatch run <env_name>:<script>`. You can omit the `<env_name>` for those under the `default` environment. 
 
-To run any sort of external script within this project, use the command: `hatch run <path/to/script>`.
+To run any sort of external script within this project, use the command: `hatch run <path/to/script>`. If the script has dependencies on libs in the devtest group, then try: `hatch run devtest: <path/to/script>`.
 
 To run the project's type checking, full test suite, and generate coverage metrics: `hatch run tests`. You cannot run individual tests using this command.
 

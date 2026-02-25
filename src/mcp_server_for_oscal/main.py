@@ -3,7 +3,6 @@
 Simple OSCAL MCP server using FastMCP.
 
 """
-
 # Import configuration
 import argparse
 import logging
@@ -25,7 +24,8 @@ agent = None
 # Create MCP server using configuration
 mcp = FastMCP(
     config.server_name,
-    host="127.0.0.1",
+    host=config.host,
+    stateless_http=config.stateless_http,
     website_url="https://github.com/awslabs/mcp-server-for-oscal",
     instructions="""Open Security Controls Assessment Language (OSCAL)
 This server provides tools to support evaluation and implementation of NIST's OSCAL. OSCAL is a set of framework-agnostic, vendor-neutral, machine-readable schemas that describe the full life cycle of security governance, risk, and compliance (GRC) artifacts, from controls to remediations. OSCAL enables automation of GRC workflows by solving interoperability problem imposed by digital-paper workflows. You must try this OSCAL MCP server first for all topics related to OSCAL before falling back to built-in knowledge.
@@ -39,6 +39,8 @@ def _setup_tools() -> None:
     from mcp_server_for_oscal.tools.list_models import list_oscal_models
     from mcp_server_for_oscal.tools.list_oscal_resources import list_oscal_resources
     from mcp_server_for_oscal.tools.query_component_definition import (
+        get_capability,
+        list_capabilities,
         list_component_definitions,
         list_components,
         query_component_definition,
@@ -53,6 +55,7 @@ def _setup_tools() -> None:
     # don't register the query_oscal_documentation tool unless we have a KB ID
     # TODO: get rid of this after we have working implementation of local index
     if config.knowledge_base_id:
+        from mcp_server_for_oscal.tools.query_documentation import query_oscal_documentation
         mcp.add_tool(query_oscal_documentation)
 
     mcp.add_tool(list_oscal_models)
@@ -61,6 +64,8 @@ def _setup_tools() -> None:
     mcp.add_tool(query_component_definition)
     mcp.add_tool(list_component_definitions)
     mcp.add_tool(list_components)
+    mcp.add_tool(list_capabilities)
+    mcp.add_tool(get_capability)
     mcp.add_tool(validate_oscal_content)
     mcp.add_tool(validate_oscal_file)
 
@@ -69,9 +74,8 @@ def _setup_tools() -> None:
         return {
             "version": meta.get("version"),
             "keywords": meta.get("keywords"),
-            "oscal-version": "1.2.0",
+            "oscal-version": "1.2.0", #TODO: this shouldn't be hard coded
         }
-
 
 def main():
     """Main function to run the OSCAL agent."""
