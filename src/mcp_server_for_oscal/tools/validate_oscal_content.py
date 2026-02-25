@@ -11,13 +11,17 @@ import subprocess
 import tempfile
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
+import requests
+import regex
 from mcp.server.fastmcp.server import Context
 from strands import tool
 
 from mcp_server_for_oscal.tools.utils import (
-    OSCALModelType,
     ROOT_KEY_TO_MODEL_TYPE,
+    OSCALModelType,
+    config,
     load_oscal_json_schema,
     try_notify_client_error,
 )
@@ -35,8 +39,35 @@ _TRESTLE_MODEL_MAP: dict[OSCALModelType, tuple[str, str]] = {
     OSCALModelType.ASSESSMENT_PLAN: ("trestle.oscal.assessment_plan", "AssessmentPlan"),
     OSCALModelType.ASSESSMENT_RESULTS: ("trestle.oscal.assessment_results", "AssessmentResults"),
     OSCALModelType.PLAN_OF_ACTION_AND_MILESTONES: ("trestle.oscal.poam", "PlanOfActionAndMilestones"),
-    # mapping-collection has no trestle model
+    #TODO: mapping-collection has no trestle model until OSCAL > 1.2.0
 }
+
+
+def _pattern_safe(validator: Any, patrn: str, instance: Any, schema: Any) -> Any:
+    """Pattern keyword handler that uses the ``regex`` module for ECMA-262 compatibility.
+
+    OSCAL JSON schemas use Unicode property escapes (e.g. ``\\p{L}``) which are
+    valid in ECMA-262 / JSON Schema but unsupported by Python's stdlib ``re``.
+    The third-party ``regex`` module handles these natively.
+    """
+    if not validator.is_type(instance, "string"):
+        return
+    try:
+        if not regex.search(patrn, instance):
+            from jsonschema import ValidationError
+            yield ValidationError(f"{instance!r} does not match {patrn!r}")
+    except regex.error:
+        logger.debug("Skipping invalid JSON Schema pattern: %s", patrn)
+
+
+def _build_safe_validator() -> Any:
+    """Return a Draft7Validator subclass with a Python-safe ``pattern`` handler."""
+    import jsonschema
+
+    return jsonschema.validators.extend(
+        jsonschema.Draft7Validator,
+        {"pattern": _pattern_safe},
+    )
 
 
 def _make_level(
@@ -91,7 +122,6 @@ def _validate_well_formedness(content: str) -> tuple[dict, dict | None]:
 
 def _validate_json_schema(data: dict, model_type: OSCALModelType) -> dict:
     """Level 2: Validate against the bundled NIST OSCAL JSON schema."""
-    import jsonschema
 
     try:
         schema = load_oscal_json_schema(model_type)
@@ -102,7 +132,7 @@ def _validate_json_schema(data: dict, model_type: OSCALModelType) -> dict:
             errors=[f"Failed to load schema for {model_type}: {exc}"],
         )
 
-    validator = jsonschema.Draft7Validator(schema)
+    validator = _build_safe_validator()(schema)
     raw_errors = list(itertools.islice(validator.iter_errors(data), MAX_ERRORS_PER_LEVEL + 1))
 
     if not raw_errors:
@@ -180,7 +210,7 @@ def _validate_oscal_cli(content: str, model_type: OSCALModelType) -> dict:
 
         result = subprocess.run(
             [oscal_cli, "validate", tmp_file.name],
-            capture_output=True,
+            check=False, capture_output=True,
             text=True,
             timeout=60,
         )
@@ -215,6 +245,73 @@ def _validate_oscal_cli(content: str, model_type: OSCALModelType) -> dict:
     finally:
         if tmp_file is not None:
             Path(tmp_file.name).unlink(missing_ok=True)
+
+@tool
+def validate_oscal_file(
+    ctx: Context,
+    file_uri: str,
+    model_type: str | None = None,
+) -> dict:
+    """
+    Validate OSCAL JSON file through a multi-level validation pipeline.
+
+    Runs up to four validation levels in sequence:
+      1. Well-formedness - Is it valid JSON and a JSON object?
+      2. JSON Schema - Does it conform to the NIST OSCAL JSON schema?
+      3. Trestle - Semantic checks via compliance-trestle Pydantic models
+      4. oscal-cli - Full NIST validation if oscal-cli is installed
+
+    If Level 1 fails, Levels 2-4 are skipped. If oscal-cli is not installed,
+    Level 4 is gracefully skipped. The overall result is valid only when all
+    non-skipped levels pass.
+
+    Args:
+        ctx: MCP server context (injected automatically by MCP server)
+        file_uri: URI of the file to be validated. This can be local or remote but remote URI will fail unless `config.allow_remote_uris == True`.
+        model_type: Optional OSCAL model type (e.g. "catalog", "profile").
+            If omitted, the model type is auto-detected from the root key.
+
+    Returns:
+        dict: Structured validation results with per-level detail
+    """
+    uri = urlparse(file_uri)
+
+    if uri.scheme in ('', 'file'):
+        lf = Path(uri.path)
+        if lf.is_dir():
+            raise ValueError("URI must point to a file")
+
+        try:
+            with open(lf) as oftv:
+                return validate_oscal_content(ctx, oftv.read(), model_type)
+        except Exception as e:
+            logger.exception("OSCAL validation error.")
+            raise
+
+    # Remote URI
+    if not config.allow_remote_uris:
+        msg = (
+            f"Remote URI loading is not enabled. "
+            f"Set OSCAL_ALLOW_REMOTE_URIS=true to enable. Source: {file_uri}"
+        )
+        logger.error(msg)
+        try_notify_client_error(msg, ctx)
+        raise ValueError(msg)
+
+    try:
+        response = requests.get(file_uri, timeout=config.request_timeout)
+        response.raise_for_status()
+        return validate_oscal_content(ctx, response.text, model_type)
+    except requests.Timeout as e:
+        msg = f"Request timeout while fetching remote URI (timeout={config.request_timeout}s): {file_uri}"
+        logger.exception(msg)
+        try_notify_client_error(msg, ctx)
+        raise ValueError(msg) from e
+    except requests.RequestException as e:
+        msg = f"Failed to fetch remote OSCAL file: {e}"
+        logger.exception(msg)
+        try_notify_client_error(msg, ctx)
+        raise ValueError(msg) from e
 
 
 @tool
